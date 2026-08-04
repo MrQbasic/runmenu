@@ -77,9 +77,9 @@ typedef struct DirEntry{
     bool isDirectoy;
     char* name;
     char* path;
-    int subdirs, files;
-    struct DirEntry** nextDir;
-    struct DirEntry** nextFile;
+    int entries;
+    struct DirEntry** nextEntry;
+    struct DirEntry* parent;
 } DirEntry;
 
 int getSubTypeCount(DIR* dir, unsigned char type){
@@ -95,20 +95,19 @@ int getSubTypeCount(DIR* dir, unsigned char type){
 
 
 //return is count of dirs
-int getDirList(DIR* dir, DirEntry* root){
+void getDirList(DIR* dir, DirEntry* root){
+
     //alloc space for all the sub ptrs
-    root->subdirs = getSubTypeCount(dir, DT_DIR);
-    root->files   = getSubTypeCount(dir, DT_REG);
+    root->entries  = getSubTypeCount(dir, DT_DIR);
+    root->entries += getSubTypeCount(dir, DT_REG);
 
-    printf("files: %d dirs: %d\n", root->files, root->subdirs);
+    printf("%s: files: %d\n", root->path, root->entries);
 
-    root->nextDir  = (DirEntry**) malloc(sizeof(DirEntry*) * root->subdirs);
-    root->nextFile = (DirEntry**) malloc(sizeof(DirEntry*) * root->files);
-    
+    root->nextEntry = (DirEntry**) malloc(sizeof(DirEntry*) * (root->entries));
 
     //scan the dir
     struct dirent *entry;
-    int file_index = 0, dir_index = 0;
+    int file_index = 0;
 
     while ((entry = readdir(dir)) != NULL) {
         //filter out all hidden folders
@@ -118,7 +117,7 @@ int getDirList(DIR* dir, DirEntry* root){
         switch (entry->d_type){
             case DT_DIR:
                 //check if the array is full
-                if(dir_index == root->subdirs){
+                if(file_index == root->entries){
                     printf("ERROR: Unexpected\n");
                     exit(1);
                 }
@@ -130,11 +129,11 @@ int getDirList(DIR* dir, DirEntry* root){
                 e1->name = (char*) malloc(strlen(entry->d_name) + 1);
                 strcpy(e1->name, entry->d_name);
                 //substructs
-                e1->nextFile = NULL;
-                e1->nextDir  = NULL;
+                e1->nextEntry = NULL;
+                e1->parent = root;
                 e1->isSelected = false;
                 //append to the list
-                root->nextDir[dir_index] = e1;
+                root->nextEntry[file_index] = e1;
                 
                 //concat rootpath and name to get the new path
                 int newpath_len = strlen(root->path) + strlen(entry->d_name)+2;
@@ -147,12 +146,12 @@ int getDirList(DIR* dir, DirEntry* root){
                     getDirList(dir, e1);
                 }
                 
-                dir_index ++;
+                file_index ++;
                 break;
 
             case DT_REG:
                 //check if the array is full
-                if(file_index == root->files){
+                if(file_index == root->entries){
                     printf("ERROR: Unexpected\n");
                     exit(1);
                 }
@@ -160,18 +159,20 @@ int getDirList(DIR* dir, DirEntry* root){
                 DirEntry* e2 =(DirEntry*) malloc(sizeof(DirEntry));
                 //type
                 e2->isDirectoy = false;
+                e2->isSelected = false;
                 //name
                 e2->name = (char*) malloc(strlen(entry->d_name) + 1);
                 strcpy(e2->name, entry->d_name);
                 //substructs
-                e2->nextFile = NULL;
-                e2->nextDir  = NULL;
+                e2->nextEntry = NULL;
+                e2->parent = root;
+                e2->entries = 0;
                 //concat rootpath and name to get the new path
                 newpath_len = strlen(root->path) + strlen(entry->d_name)+2;
                 e2->path = (char*) malloc(sizeof(char) * newpath_len); 
                 snprintf(e2->path, newpath_len, "%s/%s", root->path, entry->d_name);
                 //append to the list
-                root->nextFile[file_index] = e2;
+                root->nextEntry[file_index] = e2;
                 file_index ++;
                 break;
 
@@ -189,28 +190,68 @@ int lineToPixelY(int line ,XFontStruct* font){
 int subEntityMaxLenghtPixel(DirEntry* root, XFontStruct* font){
     int max = 0;
     //go through dir names
-    for(int i=0; i<root->subdirs; i++){
-        DirEntry *subdir = root->nextDir[i];
-        int len = strlen(subdir->name);
-        int pixcnt = XTextWidth(font, subdir->name, len);
-        if(pixcnt > max) max = pixcnt;
-    }
-    //go through file name
-    for(int i=0; i<root->files; i++){
-        DirEntry *subdir = root->nextFile[i];
-        int len = strlen(subdir->name);
-        int pixcnt = XTextWidth(font, subdir->name, len);
+    for(int i=0; i<root->entries; i++){
+        DirEntry *entry = root->nextEntry[i];
+        int len = strlen(entry->name);
+        int pixcnt = XTextWidth(font, entry->name, len);
         if(pixcnt > max) max = pixcnt;
     }
     return max;
 }
 
-DirEntry rootDir;
-
-
 DirEntry* lastDir;
 
-int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, DirEntry* dir, int* cursor, int x_pos, bool select, bool back){
+void handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
+    //speed up
+    if(*select == false && *back == false) return;
+    //unecpected case due to nature of event handeling
+    if(*select && *back){
+        *select = false;
+        *back = false;
+    }
+    //go through all entried
+    for(int i=0; i<dir->entries; i++){
+        //get the entry
+        DirEntry* entry = dir->nextEntry[i];
+        //check if its a selected dir
+        if(entry->isSelected){
+            handleDirList(entry, cursor, select, back);
+        }
+        //check if we are at the end of the branch
+        if(dir->hasSelected) continue;
+        //check if we are on the selected entry
+        if(i != *cursor) continue;
+        //check if we select
+        if(*select){
+            if(entry->isDirectoy){
+                entry->isSelected = true;
+                entry->hasSelected = false;
+                dir->hasSelected = true;
+                dir->selectedChild = i;
+                *select = false;
+                
+            }else{
+                launchFromPath(entry->path);
+            }
+        }
+        //check if we go back
+        if(*back){
+            printf("Closed: %s  parent is: %s\n", dir->name, dir->parent->name);
+
+            dir->isSelected = false;
+            dir->parent->hasSelected = false;
+            *back = false;
+            *cursor = dir->parent->selectedChild;
+        }
+    }
+}
+
+
+
+
+int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, DirEntry* dir, int* cursor, int x_pos){
+    if(dir->entries <= 0) return 0;
+
     //save old color config
     XGCValues old_values;
     XGetGCValues(display, gc, GCForeground, &old_values);
@@ -231,18 +272,10 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
         skipp = (dir->selectedChild /LINES_IN_PAGE) * LINES_IN_PAGE;
     }else{
         //clamp cursor
-        if(*cursor >= (dir->subdirs + dir->files -1)) *cursor = (dir->subdirs + dir->files -1);
+        if(*cursor >= (dir->entries -1)) *cursor = (dir->entries -1);
 
         //calc number of pages
-        numberOfPages = (dir->subdirs + dir->files) / LINES_IN_PAGE;
-
-        //deselect
-        if(back){
-            dir->isSelected = false;
-            lastDir->hasSelected = false;
-            *cursor = lastDir->selectedChild;
-            return 0;
-        }
+        numberOfPages = (dir->entries) / LINES_IN_PAGE;
 
         linePos = (*cursor % LINES_IN_PAGE) + 1;
         pagePos = (*cursor / LINES_IN_PAGE);
@@ -252,57 +285,39 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
     lastDir = dir; 
 
     //this is used to get the correct color instantly as we 
-    if(dir->hasSelected || select){
+    if(dir->hasSelected ){
         XSetForeground(display, gc, rgb_to_pixel(90, 110, 190));
     }else{
         XSetForeground(display, gc, rgb_to_pixel(70, 80, 140));
     }
+    
     int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
     XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos, font)+PIXEL_LINESPACE, cursorWidth, lineToPixelY(1, font)+PIXEL_LINESPACE);
-                
+    
 
-    //display the dirs first
-    XSetForeground(display, gc, rgb_to_pixel(255, 128, 64));
-    for(int i=0; i<dir->subdirs; i++){
+    //go through all the entries 
+    for(int i=0; i<dir->entries; i++){
         if(totalCount >= skipp){
+            //get the entry
             if(displayCount >= LINES_IN_PAGE) break;
-            DirEntry *subdir = dir->nextDir[i];
-            int len = strlen(subdir->name);
-            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2, font) , subdir->name, len);
-            displayCount++;
-            
-            //check if we need to toggle selected
-            if(*cursor == totalCount && select && !dir->hasSelected){
-                printf("%s\n", subdir->name);
-                subdir->isSelected = true;
-                subdir->hasSelected = false;
-                dir->hasSelected = true;
-                dir->selectedChild = totalCount;
-                select = false; //avoid recursivly opening sufft ????
-                *cursor = 0;
+            DirEntry *entry = dir->nextEntry[i];
+
+            //check the entry type
+            if(entry->isDirectoy){
+                XSetForeground(display, gc, rgb_to_pixel(255, 128, 64));
+            }else{
+                XSetForeground(display, gc, rgb_to_pixel(64, 200, 64));
             }
+            
+            //render the name
+            int len = strlen(entry->name);
+            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2, font) , entry->name, len);
+            displayCount++;
             
             //recursivly call the drawDir
-            if(subdir->isSelected){
+            if(entry->isSelected && entry->isDirectoy){
                 int offset_x = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
-                numberOfPages = drawDirList(display, window, gc, font, subdir, cursor, x_pos+offset_x, select, back);
-            }
-        }
-        totalCount++;
-    }
-
-    //display the files second
-    XSetForeground(display, gc, rgb_to_pixel(64, 200, 64));
-    for(int i=0; i<dir->files; i++){
-        if(totalCount >= skipp){
-            if(displayCount >= LINES_IN_PAGE) break;
-            DirEntry *file = dir->nextFile[i];
-            int len = strlen(file->name);
-            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2, font) , file->name, len);
-            displayCount++;
-
-            if(*cursor == totalCount && select && !dir->hasSelected){
-                launchFromPath(file->path);
+                numberOfPages = drawDirList(display, window, gc, font, entry, cursor, x_pos+offset_x);
             }
         }
         totalCount++;
@@ -380,8 +395,8 @@ int main(void) {
 
     //concat the home path and the folder path
     char path[1024];
-    //snprintf(path, sizeof(path), "%s/.config/runmenu", path_home); //TODO handle the overflow
-    int path_len =snprintf(path, sizeof(path), "%s", path_home); //TODO handle the overflow
+    int path_len = snprintf(path, sizeof(path), "%s/.config/runmenu", path_home); //TODO handle the overflow
+    //int path_len =snprintf(path, sizeof(path), "%s", path_home); //TODO handle the overflow
 
     //create the cfg dir
     DIR *dir = opendir(path);
@@ -406,13 +421,15 @@ int main(void) {
         }
     }
 
+    DirEntry rootDir;
     rootDir.path = (char*) malloc(sizeof(char) * path_len);
     strcpy(rootDir.path, path);
-    rootDir.nextDir = NULL;
-    rootDir.nextFile = NULL;
+    rootDir.nextEntry = NULL;
     rootDir.isDirectoy = true;
     rootDir.hasSelected = false;
     rootDir.isSelected = false;
+    rootDir.parent = NULL;
+    rootDir.entries = 0;
     getDirList(dir, &rootDir);
 
 
@@ -440,45 +457,59 @@ int main(void) {
                 KeySym keysym;
                 char buf[32];
                 int len = XLookupString(&event.xkey, buf, sizeof(buf) - 1, &keysym, NULL);
-                //check for special keys
-                switch (keysym){
-                case XK_Escape:
-                    //close the window
-                    XCloseDisplay(display);
-                    return 0;
-                    break;
 
-                case XK_BackSpace:
-                    //erase the last char if there is one
-                    if(userinput_cursor > 0) userinput_cursor--;
-                    break;
+                //check if its a command or not
+                if(event.xkey.state & ControlMask){
+                    switch(keysym){
+                        case XK_N:
+                        case XK_n:
+                            printf("New folder\n");
+                            break;
 
-                case XK_Left:
-                    back = true;
-                    break;
+                        default:
+                            //unexpected input
+                            break;
+                    }
+                }else{
+                    //check for special keys
+                    switch (keysym){
+                        case XK_Escape:
+                            //close the window
+                            XCloseDisplay(display);
+                            return 0;
+                            break;
 
-                case XK_Right:
-                case XK_Return:
-                    select = true;
-                    break;
-                
-                case XK_Down:
-                    line_cursor++;
-                    break;
-                
-                case XK_Up:
-                    line_cursor--;
-                    if(line_cursor < 0) line_cursor = 0;
-                    break;
+                        case XK_BackSpace:
+                            //erase the last char if there is one
+                            if(userinput_cursor > 0) userinput_cursor--;
+                            break;
 
-                default:
-                    if(userinput_cursor+len > USERINPUT_LENGTH) len = 0;
-                    strncpy(userinput+userinput_cursor, buf, len);
-                    userinput_cursor += len;
-                    break;
+                        case XK_Left:
+                            back = true;
+                            break;
+
+                        case XK_Right:
+                        case XK_Return:
+                            select = true;
+                            break;
+
+                        case XK_Down:
+                            line_cursor++;
+                            break;
+
+                        case XK_Up:
+                            line_cursor--;
+                            if(line_cursor < 0) line_cursor = 0;
+                            break;
+
+                        default:
+                            if(userinput_cursor+len > USERINPUT_LENGTH) len = 0;
+                            strncpy(userinput+userinput_cursor, buf, len);
+                            userinput_cursor += len;
+                            break;
+                    }
                 }
                 //NO BREAK WE NEED TO RERENDER AFTER THIS EVENT!
-
             case Expose:
                 //handle window rendering
                 XClearWindow(display, window);
@@ -491,12 +522,14 @@ int main(void) {
                 XDrawLine(display, window, gc, PIXEL_OFFSET_LEFT + width, PIXEL_LINESPACE*2, PIXEL_OFFSET_LEFT + width, lineToPixelY(1, font));
 
                 //print the dir list
-                int pageCnt = drawDirList(display, window, gc, font, &rootDir, &line_cursor, 0, select, back);
+                handleDirList(&rootDir, &line_cursor, &select, &back);
+                int pageCnt = drawDirList(display, window, gc, font, &rootDir, &line_cursor, 0);
                 
                 //Print page index
                 int pagePos = (line_cursor / LINES_IN_PAGE);
-                char pageStringBuf[10];
-                int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d", pagePos+1, pageCnt+1);
+                char pageStringBuf[256];
+                int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir", pagePos+1, pageCnt+1);
+
                 XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE,font), pageStringBuf, pageStringLen);
                 
                 break;
