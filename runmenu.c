@@ -6,10 +6,12 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <fcntl.h> 
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <spawn.h>
 
 #define USERINPUT_LENGTH 128
 
@@ -17,6 +19,9 @@
 #define PIXEL_LINESPACE   2
 
 #define LINES_IN_PAGE 10
+
+#define MSG_TEXT_PADDING_X 10
+#define MSG_TEXT_PADDING_Y 10
 
 
 void launchFromPath(char* path){
@@ -28,11 +33,45 @@ void launchFromPath(char* path){
         extension++;
     }
     extension++;
-    //check the extension type
-    if(strcmp(extension, "sh") == 0){
-        printf("this should run a bash script: %s\n",path);
+    //do the fork
+    pid_t pid = fork();
+    if (pid < 0) {
+        printf("FORK failed!\n");
+        exit(1);
     }
+
+    if (pid == 0) {
+        //Detach file
+        setsid();
+        //redirect stdio
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull < 0) return;
+        dup2(devnull, STDIN_FILENO);
+        dup2(devnull, STDOUT_FILENO);
+        dup2(devnull, STDERR_FILENO);
+        if (devnull > STDERR_FILENO) close(devnull);
+
+        //launch depending file extension
+        if(strcmp(extension, "sh") == 0){
+            printf("this should run a bash script: %s\n",path);
+        }else{
+            printf("launch this: %s\n", path);
+        }
+        execvp(path, NULL);
+
+        //unexpected only on error
+        fprintf(stderr, "EXEC failed: %s\n", strerror(errno));
+        exit(127);
+    }
+
+    exit(0);
 }
+
+Display* display;
+GC gc;
+XFontStruct* font;
+int monitor_height, monitor_width, monitor_start_x, monitor_start_y;
+Window window;
 
 XRRMonitorInfo pick_monitor_under_point(XRRMonitorInfo *monitors, int num, int x, int y) {
     for (int i = 0; i < num; i++) {
@@ -100,6 +139,7 @@ void getDirList(DIR* dir, DirEntry* root){
     //alloc space for all the sub ptrs
     root->entries  = getSubTypeCount(dir, DT_DIR);
     root->entries += getSubTypeCount(dir, DT_REG);
+    root->entries += getSubTypeCount(dir, DT_LNK);
 
     printf("%s: files: %d\n", root->path, root->entries);
 
@@ -112,7 +152,6 @@ void getDirList(DIR* dir, DirEntry* root){
     while ((entry = readdir(dir)) != NULL) {
         //filter out all hidden folders
         if(entry->d_name[0] == '.') continue;
-
 
         switch (entry->d_type){
             case DT_DIR:
@@ -149,6 +188,7 @@ void getDirList(DIR* dir, DirEntry* root){
                 file_index ++;
                 break;
 
+            case DT_LNK:
             case DT_REG:
                 //check if the array is full
                 if(file_index == root->entries){
@@ -171,6 +211,14 @@ void getDirList(DIR* dir, DirEntry* root){
                 newpath_len = strlen(root->path) + strlen(entry->d_name)+2;
                 e2->path = (char*) malloc(sizeof(char) * newpath_len); 
                 snprintf(e2->path, newpath_len, "%s/%s", root->path, entry->d_name);
+                //check if its a link
+                char* newPath = (char*) malloc(sizeof(char) * 1024);
+                ssize_t linkPathLength = readlink(e2->path, newPath, sizeof(char) * 1023);
+                if(linkPathLength != -1){
+                    newPath[linkPathLength] = '\0';
+                    free(e2->path);
+                    e2->path = newPath;
+                }
                 //append to the list
                 root->nextEntry[file_index] = e2;
                 file_index ++;
@@ -183,7 +231,7 @@ void getDirList(DIR* dir, DirEntry* root){
     }
 }
 
-int lineToPixelY(int line ,XFontStruct* font){
+int lineToPixelY(int line){
     return (font->ascent + font->descent + PIXEL_LINESPACE) * line;
 }
 
@@ -201,27 +249,30 @@ int subEntityMaxLenghtPixel(DirEntry* root, XFontStruct* font){
 
 DirEntry* lastDir;
 
-void handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
+//returns the current open entry (NULL if nothing changed)
+DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
     //speed up
-    if(*select == false && *back == false) return;
+    if(*select == false && *back == false) return NULL;
     //unecpected case due to nature of event handeling
     if(*select && *back){
         *select = false;
         *back = false;
     }
+
+
     //go through all entried
     for(int i=0; i<dir->entries; i++){
         //get the entry
         DirEntry* entry = dir->nextEntry[i];
         //check if its a selected dir
         if(entry->isSelected){
-            handleDirList(entry, cursor, select, back);
+            return handleDirList(entry, cursor, select, back);
         }
         //check if we are at the end of the branch
         if(dir->hasSelected) continue;
         //check if we are on the selected entry
         if(i != *cursor) continue;
-        //check if we select
+        //check if we have to select
         if(*select){
             if(entry->isDirectoy){
                 entry->isSelected = true;
@@ -229,25 +280,32 @@ void handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
                 dir->hasSelected = true;
                 dir->selectedChild = i;
                 *select = false;
-                
+                return entry;
+
             }else{
                 launchFromPath(entry->path);
+                return NULL;
             }
         }
         //check if we go back
         if(*back){
-            printf("Closed: %s  parent is: %s\n", dir->name, dir->parent->name);
-
             dir->isSelected = false;
-            dir->parent->hasSelected = false;
             *back = false;
-            *cursor = dir->parent->selectedChild;
+            if(dir->parent != NULL){
+                dir->parent->hasSelected = false;
+                *cursor = dir->parent->selectedChild;
+                return dir->parent;
+            }
+            return dir;
         }
     }
+    //only runs when the head folder has no entries
+    *back = false;
+    *select = false;
+    dir->parent->hasSelected = false;
+    dir->isSelected = false; 
+    return dir->parent;
 }
-
-
-
 
 int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, DirEntry* dir, int* cursor, int x_pos){
     if(dir->entries <= 0) return 0;
@@ -292,7 +350,7 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
     }
     
     int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
-    XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos, font)+PIXEL_LINESPACE, cursorWidth, lineToPixelY(1, font)+PIXEL_LINESPACE);
+    XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE, cursorWidth, lineToPixelY(1)+PIXEL_LINESPACE);
     
 
     //go through all the entries 
@@ -311,7 +369,7 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
             
             //render the name
             int len = strlen(entry->name);
-            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2, font) , entry->name, len);
+            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2) , entry->name, len);
             displayCount++;
             
             //recursivly call the drawDir
@@ -331,10 +389,113 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
     return numberOfPages;
 }
 
+typedef enum messageType{
+    MSG_INFO,
+    MSG_WARN,
+    MSG_ERROR
+}messageType;
+
+messageType currentMsgType;
+char* currentMsgText;
+bool shouldDrawMsg = false;
+
+void setMessage(messageType type, char* msg){
+    currentMsgType = type;
+    currentMsgText = msg;
+    shouldDrawMsg = true;
+}
+
+void drawMessage(){
+    if(!shouldDrawMsg) return;
+    shouldDrawMsg = false;
+    //save old color config
+    XGCValues old_values;
+    XGetGCValues(display, gc, GCForeground, &old_values);
+    //setup type specific things
+    const char* prefixString;
+    unsigned long newTextColor;
+    switch(currentMsgType){
+        case MSG_INFO:
+            newTextColor = rgb_to_pixel(255, 255, 255);
+            prefixString = "INFO: ";
+            break;
+        case MSG_WARN:
+            newTextColor = rgb_to_pixel(255, 255, 32);
+            prefixString = "WARN: ";
+            break;
+        case MSG_ERROR:
+            newTextColor = rgb_to_pixel(255, 32, 32);
+            prefixString = "ERROR: ";
+            break;
+    }
+    //append the prefix
+    size_t length = strlen(currentMsgText) + 8;
+    char* buf = (char*) malloc(sizeof(char) * length);
+    int buf_len = snprintf(buf, length, "%s%s", prefixString, currentMsgText); 
+    //calc some dimensions
+    int textWidth = XTextWidth(font, buf, buf_len);
+    int textStart_x = monitor_start_x + (monitor_width / 2) - (textWidth / 2);
+    int textStart_y = monitor_start_y + (lineToPixelY(LINES_IN_PAGE+2) / 2 );
+    //clear the area under the bar
+    XSetForeground(display, gc, rgb_to_pixel(0, 0, 0));
+    XFillRectangle(display, window, gc, textStart_x - MSG_TEXT_PADDING_X, textStart_y - MSG_TEXT_PADDING_Y - lineToPixelY(1) + PIXEL_LINESPACE, textWidth + MSG_TEXT_PADDING_X*2, lineToPixelY(1) + MSG_TEXT_PADDING_Y*2);
+    //draw the background box
+    XSetForeground(display, gc, newTextColor);
+    XDrawRectangle(display, window, gc, textStart_x - MSG_TEXT_PADDING_X, textStart_y - MSG_TEXT_PADDING_Y - lineToPixelY(1) + PIXEL_LINESPACE, textWidth + MSG_TEXT_PADDING_X*2, lineToPixelY(1) + MSG_TEXT_PADDING_Y*2);
+    //draw the text inside
+    XDrawString(display, window, gc, textStart_x, textStart_y, buf, buf_len);
+    //reset colors and buffer
+    free(buf);
+    XSetForeground(display, gc, old_values.foreground);
+}
+
+
+void createDir(DirEntry* parent, char* dirName, int inputLength){
+    //check if we have a name
+    if(inputLength == 0){
+        setMessage(MSG_WARN, "Please input a valid name into the main bar!");
+        return;
+    }
+    //construct a new entry
+    DirEntry* entry = malloc(sizeof(DirEntry));
+    entry->name = (char*) malloc(strlen(dirName));
+    strcpy(entry->name, dirName);
+    entry->parent = parent;
+    entry->isDirectoy = true;
+    entry->hasSelected = false;
+    entry->isSelected = true;
+    entry->nextEntry = NULL;
+    entry->selectedChild = 0;
+    entry->entries = 0;
+    int pathLength = strlen(dirName) + 2 + strlen(parent->path);
+    entry->path = (char*) malloc(sizeof(char) * pathLength);
+    snprintf(entry->path, sizeof(char) * pathLength, "%s/%s", parent->path, dirName);
+    //add to parent
+    DirEntry** newList = (DirEntry**) malloc(sizeof(DirEntry*) * (parent->entries + 1));
+    memcpy(newList, parent->nextEntry, parent->entries * sizeof(DirEntry*));
+    free(parent->nextEntry);
+    parent->nextEntry = newList;
+    parent->entries++; 
+    parent->nextEntry[parent->entries-1] = entry;
+    parent->hasSelected = true;
+    parent->selectedChild = parent->entries - 1;
+    //add to file system
+    char buf[1024];
+    messageType type;
+    if(mkdir(entry->path, 0755) != 0){
+        snprintf(buf, sizeof(buf), "Could not create dir: %s", entry->path);
+        type = MSG_ERROR;
+    }else{
+        snprintf(buf, sizeof(buf), "New dir: %s", entry->path);
+        type = MSG_INFO;
+    } 
+    setMessage(type, buf);
+}
+
 
 int main(void) {
     //Connec to the Server
-    Display *display = XOpenDisplay(NULL);
+    display = XOpenDisplay(NULL);
     if (display == NULL) {
         fprintf(stderr, "Cannot open display\n");
         exit(1);
@@ -343,9 +504,7 @@ int main(void) {
     int screen = DefaultScreen(display);
 
     //get all the needed dimensions for the window
-    int monitor_height, monitor_width, monitor_start_x, monitor_start_y;
     getMonitorSizeAndPos(display, screen, &monitor_width, &monitor_height, &monitor_start_x, &monitor_start_y);
-
 
     //set the window Color
     XSetWindowAttributes attrs = {0};
@@ -353,13 +512,13 @@ int main(void) {
     attrs.background_pixel = rgb_to_pixel(16, 16, 16);
 
     //get font
-    XFontStruct *font = XLoadQueryFont(display, "fixed");
+    font = XLoadQueryFont(display, "fixed");
     
     //calc window dimensions
-    int window_height = lineToPixelY(LINES_IN_PAGE+2, font) + PIXEL_LINESPACE;
+    int window_height = lineToPixelY(LINES_IN_PAGE+2) + PIXEL_LINESPACE;
 
     //Create the window    
-    Window window = XCreateWindow(
+    window = XCreateWindow(
         display, RootWindow(display, screen),
         monitor_start_x, monitor_start_y,
         monitor_width, window_height,
@@ -371,19 +530,15 @@ int main(void) {
         &attrs
     );
 
-
     //enable events
     XSelectInput(display, window, ExposureMask | KeyPressMask | StructureNotifyMask);
     
     //display Window
     XMapWindow(display, window);
 
-
     //get Keyboard focus
     XFlush(display);
     XSetInputFocus(display, window, RevertToParent, CurrentTime);
-
-
 
     //----------------------------------------------------------------------
     // scanning for apps and shortcuts in cfg dir
@@ -434,16 +589,17 @@ int main(void) {
 
 
     //main loop
-    GC gc = XCreateGC(display, window, 0, NULL);
+    gc = XCreateGC(display, window, 0, NULL);
     XEvent event;
 
     XSetForeground(display, gc, rgb_to_pixel(255,255,255));
 
-    char userinput[USERINPUT_LENGTH];
+    char userinput[USERINPUT_LENGTH] = "";
     int userinput_cursor = 0;
 
     int line_cursor = 0;
     
+    DirEntry* currentEntry = &rootDir;
 
     while (1) {
         XNextEvent(display, &event);
@@ -463,7 +619,7 @@ int main(void) {
                     switch(keysym){
                         case XK_N:
                         case XK_n:
-                            printf("New folder\n");
+                            createDir(currentEntry, userinput, userinput_cursor);
                             break;
 
                         default:
@@ -515,14 +671,19 @@ int main(void) {
                 XClearWindow(display, window);
 
                 //draw the userinput
-                XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(1,font), userinput, userinput_cursor);
+                XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(1), userinput, userinput_cursor);
                 
                 //draw cursor
                 int width = XTextWidth(font, buf, userinput_cursor);
-                XDrawLine(display, window, gc, PIXEL_OFFSET_LEFT + width, PIXEL_LINESPACE*2, PIXEL_OFFSET_LEFT + width, lineToPixelY(1, font));
+                XDrawLine(display, window, gc, PIXEL_OFFSET_LEFT + width, PIXEL_LINESPACE*2, PIXEL_OFFSET_LEFT + width, lineToPixelY(1));
 
                 //print the dir list
-                handleDirList(&rootDir, &line_cursor, &select, &back);
+                DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
+                if(tmpEntry != NULL){
+                    currentEntry = tmpEntry;
+                    printf("Current dir: %s\n", currentEntry->path);
+                };
+
                 int pageCnt = drawDirList(display, window, gc, font, &rootDir, &line_cursor, 0);
                 
                 //Print page index
@@ -530,8 +691,10 @@ int main(void) {
                 char pageStringBuf[256];
                 int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir", pagePos+1, pageCnt+1);
 
-                XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE,font), pageStringBuf, pageStringLen);
+                XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE), pageStringBuf, pageStringLen);
                 
+                drawMessage();
+
                 break;
 
             default:
