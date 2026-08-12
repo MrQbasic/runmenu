@@ -13,6 +13,8 @@
 #include <stdbool.h>
 #include <spawn.h>
 
+#define BASH "/bin/bash"
+
 #define USERINPUT_LENGTH 128
 
 #define PIXEL_OFFSET_LEFT 4
@@ -50,15 +52,13 @@ void launchFromPath(char* path){
         dup2(devnull, STDOUT_FILENO);
         dup2(devnull, STDERR_FILENO);
         if (devnull > STDERR_FILENO) close(devnull);
-
         //launch depending file extension
         if(strcmp(extension, "sh") == 0){
-            printf("this should run a bash script: %s\n",path);
+            char* argv[] = {BASH, path, NULL}; 
+            execvp(argv[0], argv);
         }else{
-            printf("launch this: %s\n", path);
+            execvp(path, NULL);
         }
-        execvp(path, NULL);
-
         //unexpected only on error
         fprintf(stderr, "EXEC failed: %s\n", strerror(errno));
         exit(127);
@@ -349,7 +349,7 @@ int drawDirList(Display* display, Drawable window, GC gc, XFontStruct* font, Dir
         XSetForeground(display, gc, rgb_to_pixel(70, 80, 140));
     }
     
-    int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
+    int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT * 2;
     XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE, cursorWidth, lineToPixelY(1)+PIXEL_LINESPACE);
     
 
@@ -491,6 +491,8 @@ void createDir(DirEntry* parent, char* dirName, int inputLength){
     } 
     setMessage(type, buf);
 }
+
+//void createLink(void path)
 
 
 int main(void) {
@@ -679,10 +681,7 @@ int main(void) {
 
                 //print the dir list
                 DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
-                if(tmpEntry != NULL){
-                    currentEntry = tmpEntry;
-                    printf("Current dir: %s\n", currentEntry->path);
-                };
+                if(tmpEntry != NULL) currentEntry = tmpEntry;
 
                 int pageCnt = drawDirList(display, window, gc, font, &rootDir, &line_cursor, 0);
                 
