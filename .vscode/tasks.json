@@ -3,18 +3,11 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "C/C++: gcc build active file",
-      "command": "/usr/bin/gcc",
-      "args": [
-        "-g",
-        "${file}",
-        "-o",
-        "${fileDirname}/${fileBasenameNoExtension}",
-        "-lX11",
-        "-lXrandr"
-      ],
+      "label": "Build Runmenu",
+      "command": "make",
+      "args": [],
       "options": {
-        "cwd": "${fileDirname}"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": ["$gcc"],
       "group": {

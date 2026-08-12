@@ -2,10 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "(gdb) Launch C Program",
+      "name": "Runmenu",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${fileDirname}/${fileBasenameNoExtension}",
+      "program": "${workspaceRoot}/runmenu",
       "args": [],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
@@ -20,7 +20,7 @@
           "ignoreFailures": true
         }
       ],
-      "preLaunchTask": "C/C++: gcc build active file"
+      "preLaunchTask": "Build Runmenu"
     }
   ]
 }
