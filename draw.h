@@ -7,7 +7,7 @@
 #include "dirs.h"
 
 #define PIXEL_OFFSET_LEFT 4
-#define PIXEL_LINESPACE   2
+#define PIXEL_LINESPACE   3
 
 #define LINES_IN_PAGE 10
 
@@ -36,6 +36,12 @@ void drawBotomBar(int pagePos, int pageCount);
 
 void drawUserinput(char* input);
 
+void drawUserinputPlaceholder();
+
 int drawDirList(DirEntry* dir, int* cursor, int x_pos);
 
 XRRMonitorInfo pick_monitor_under_point(XRRMonitorInfo *monitors, int num, int x, int y);
+
+bool isWindowFocused();
+
+int drawSuggestions(char** names, int count, int cursor);

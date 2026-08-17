@@ -21,3 +21,7 @@ void getDirList(DIR* dir, DirEntry* root);
 DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back);
 
 void createDir(DirEntry* parent, char* dirName, int inputLength);
+
+void getFilesInPath();
+
+char** getSuggestions(int best_n, char* input);

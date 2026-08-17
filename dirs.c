@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 int getSubTypeCount(DIR* dir, unsigned char type){
     int count = 0;
@@ -216,4 +217,126 @@ void createDir(DirEntry* parent, char* dirName, int inputLength){
         type = MSG_INFO;
     } 
     setMessage(type, buf);
+}
+
+int pathFilesSize = 0;
+char** pathFiles = NULL;
+int fileCount = 0;
+
+void expandList(){
+    //create a new list with bigger size
+    pathFilesSize += 100;
+    char** newList = (char**) malloc(sizeof(char*) * pathFilesSize);
+    //check if there was a list before
+    if(pathFiles != NULL){
+        //copy old one over
+        memcpy(newList, pathFiles, sizeof(char*) * (pathFilesSize-100));
+        free(pathFiles);
+    }
+    //swap prts
+    pathFiles = newList;
+}
+
+void getFilesInPath(){
+    //get env var
+    const char* path_var = getenv("PATH");
+    if(!path_var){
+        setMessage(MSG_ERROR, "could not get PATH env var");
+        return;
+    }
+    char* path_string = strdup(path_var);
+
+    //change the ":" to the string terminator \0
+    char* c = path_string;
+    int substringCount = 0;
+    while(*c != '\0'){
+        if(*c == ':'){
+            *c = '\0';
+            substringCount++;
+        }
+        c++;
+    }
+
+    //init the list
+    expandList();
+
+    //go through all substrings
+    char* substring = path_string;
+    int fileIndex = 0;
+    for(int i=0; i<substringCount; i++){
+        //open the dir
+        DIR *dir = opendir(substring);
+        //go through all the files in the dir
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            //ignore .files and .. and .
+            if(entry->d_name[0] == '.') continue;
+            //check if we need to resize the list
+            if(fileIndex >= pathFilesSize) expandList();
+            //copy the name
+            char* name = strdup(entry->d_name);
+            //add the name to the list
+            pathFiles[fileIndex] = name;
+            fileIndex++;
+        }
+        //go to the next substring
+        substring += strlen(substring) + 1;
+    }
+    fileCount = fileIndex;
+}
+
+#define SCORE_MATCH_CHAR        1.0f
+#define SCORE_LENGTH_PERCHAR   -0.1f
+
+float compareString(char* filename, char* userinput){
+    int flen = (int) strlen(filename);
+    int ulen = (int) strlen(userinput);
+    int minLen = flen < ulen ? flen : ulen; 
+
+    float currentScore = 0.0f;
+    //check for perfect matches
+    for(int i = 0; i < minLen; i++){
+        if(filename[i] == userinput[i]){
+            currentScore += SCORE_MATCH_CHAR * (minLen - i);
+        }else{
+            //currentScore -= SCORE_MATCH_CHAR * (minLen - i);
+        }    
+    }
+
+    //shorter results first
+    currentScore += abs(flen-ulen) * SCORE_LENGTH_PERCHAR;
+
+    return currentScore;
+}
+
+//returns a list of strings which are a match
+char** getSuggestions(int best_n, char* input){
+    //aloc the scoreboard
+    char** list = (char**) malloc(sizeof(char*) * best_n);
+    float scores[best_n];
+    //init scoreboard
+    for(int i=0; i<best_n; i++){
+        list[i] = NULL;
+        scores[i] = -100000.0f;
+    }
+    //go through all the files in the PATH
+    for(int i=0; i<fileCount; i++){
+        //eval the filename
+        float score = compareString(pathFiles[i], input);
+        //dont even check negative scores
+        if(score < 0.0f) continue;
+        //check if there is a high score
+        for(int j=0; j<best_n; j++){
+            if(scores[j] < score){
+                for(int h=i; h<best_n-1; h++){
+                    scores[h+1] = scores[h];
+                    list[h+1] = list[h];
+                }
+                scores[j] = score;
+                list[j] = pathFiles[i];
+                break;
+            }
+        }
+    }
+    return list;
 }

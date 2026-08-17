@@ -64,21 +64,29 @@ int main(void) {
     getDirList(dir, &rootDir);
 
 
+    getFilesInPath();
+
+
     //main loop
     XEvent event;
 
-    char userinput[USERINPUT_LENGTH] = "";
+    char userinput[USERINPUT_LENGTH+1] = "";
     int userinput_cursor = 0;
 
     int line_cursor = 0;
-    
+    int horz_cursor = 0;
+
     DirEntry* currentEntry = &rootDir;
 
     while (1) {
+        //check if window is no longer selected
+        if(!isWindowFocused()) exit(0);
+        
         XNextEvent(display, &event);
 
         bool select = false;
         bool back = false;
+        bool shouldRun = false;
 
         switch (event.type) {
             case KeyPress:
@@ -102,6 +110,10 @@ int main(void) {
                 }else{
                     //check for special keys
                     switch (keysym){
+                        case XK_Tab:
+                            horz_cursor++;
+                            break;
+
                         case XK_Escape:
                             //close the window
                             XCloseDisplay(display);
@@ -125,7 +137,7 @@ int main(void) {
                             break;
 
                         case XK_Return:
-                            launchFromPath(userinput);
+                            shouldRun=true;
                             break;
 
                         case XK_Down:
@@ -150,13 +162,35 @@ int main(void) {
                 //handle window rendering
                 drawBegin();
 
-                drawUserinput(userinput);
+                if(userinput_cursor != 0){
+                    drawUserinput(userinput);
+                }else{
+                    horz_cursor = 0;
+                    drawUserinputPlaceholder();
+                }
                 
                 //print the dir list
                 DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
                 if(tmpEntry != NULL) currentEntry = tmpEntry;
 
                 int pageCnt = drawDirList(&rootDir, &line_cursor, 0);
+
+                if(userinput_cursor != 0){
+                    char** list = getSuggestions(40, userinput);
+                    //count the suggestions
+                    int cnt=0;
+                    for(int i=0; i<40; i++){
+                        if(list[i] != NULL) cnt++;
+                    }
+                    //clamp the cursor
+                    if(horz_cursor >= cnt) horz_cursor = 0;
+                    //draw them
+                    drawSuggestions(list, cnt, horz_cursor);
+                    //launch if needed
+                    if(shouldRun){
+                        launchFromPath(list[horz_cursor]);
+                    }
+                }
 
                 drawBotomBar(line_cursor/LINES_IN_PAGE, pageCnt);
 

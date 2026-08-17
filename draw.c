@@ -179,7 +179,7 @@ void setupWindow(){
     );
 
     //enable events
-    XSelectInput(display, window, ExposureMask | KeyPressMask | StructureNotifyMask);
+    XSelectInput(display, window, ExposureMask | KeyPressMask | StructureNotifyMask | FocusChangeMask);
     
     //display Window
     XMapWindow(display, window);
@@ -209,7 +209,7 @@ void drawMessage(){
     shouldDrawMsg = false;
     //save old color config
     XGCValues old_values;
-   XGetGCValues(display, gc, GCForeground, &old_values);
+    XGetGCValues(display, gc, GCForeground, &old_values);
     //setup type specific things
     const char* prefixString;
     unsigned long newTextColor;
@@ -253,14 +253,28 @@ void drawBegin(){
     XClearWindow(display, window);
 }
 
+int cursor_pos_X = 0;
 
 void drawUserinput(char* input){
     //draw the userinput
     XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(1), input, strlen(input));
     
     //draw cursor
-    int width = XTextWidth(font, input, strlen(input));
-    XDrawLine(display, window, gc, PIXEL_OFFSET_LEFT + width, PIXEL_LINESPACE*2, PIXEL_OFFSET_LEFT + width, lineToPixelY(1));
+    cursor_pos_X = XTextWidth(font, input, strlen(input)) + PIXEL_OFFSET_LEFT;
+    XDrawLine(display, window, gc, cursor_pos_X, PIXEL_LINESPACE*2, cursor_pos_X, lineToPixelY(1));
+}
+
+void drawUserinputPlaceholder(){
+    //keep old colors
+    XGCValues old_values;
+    XGetGCValues(display, gc, GCForeground, &old_values);
+    //set new colors
+    XSetForeground(display, gc, rgb_to_pixel(100, 100, 100));
+    //draw the string
+    const char* text = "Type something!";
+    XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(1), text, strlen(text));
+    //reset old color
+    XSetForeground(display, gc, old_values.foreground);
 }
 
 void drawBotomBar(int pagePos, int pageCount){
@@ -268,4 +282,39 @@ void drawBotomBar(int pagePos, int pageCount){
     char pageStringBuf[256];
     int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir", pagePos+1, pageCount+1);
     XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE), pageStringBuf, pageStringLen);
+}
+
+bool isWindowFocused(){
+    Window focusedWindow;
+    int revert_to;
+    XGetInputFocus(display, &focusedWindow, &revert_to);
+    return window == focusedWindow;
+}
+
+//Todo.. maybe add dynamic spacing so it always perfectly fits
+//returns actually rendered names
+int drawSuggestions(char** names, int count, int cursor){
+    int current_X = cursor_pos_X + PIXEL_OFFSET_LEFT*5;
+    //go through all filenames
+    for(int i=0; i<count; i++){
+        //check if the string is valid
+        if(names[i] == NULL) continue;
+        //get width of the string
+        int string_width = XTextWidth(font, names[i], strlen(names[i]));
+        //check if it fits on the window
+        if(current_X+string_width >= monitor_width){
+            return i+1;
+        }
+        //draw cursor if needed
+        if(i == cursor){
+            XSetForeground(display, gc, rgb_to_pixel(40, 60, 70));
+            XFillRectangle(display, window, gc, current_X-PIXEL_OFFSET_LEFT, lineToPixelY(0)+PIXEL_LINESPACE, string_width+PIXEL_OFFSET_LEFT*2, lineToPixelY(1)+PIXEL_LINESPACE);
+            XSetForeground(display, gc, rgb_to_pixel(255, 255, 255));
+        }
+        //draw the string
+        XDrawString(display, window, gc, current_X , lineToPixelY(1), names[i], strlen(names[i]));
+        //go to the next string
+        current_X += string_width + PIXEL_OFFSET_LEFT;
+    }
+    return count;
 }

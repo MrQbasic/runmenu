@@ -43,7 +43,8 @@ void launchFromPath(char* path){
             char* argv[] = {BASH, path, NULL}; 
             execvp(argv[0], argv);
         }else{
-            execvp(path, NULL);
+            char* argv[] = {path, NULL}; 
+            execvp(path, argv);
         }
         //unexpected only on error
         fprintf(stderr, "EXEC failed: %s\n", strerror(errno));
