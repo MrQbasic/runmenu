@@ -323,14 +323,13 @@ char** getSuggestions(int best_n, char* input){
     for(int i=0; i<fileCount; i++){
         //eval the filename
         float score = compareString(pathFiles[i], input);
-        //dont even check negative scores
-        if(score < 0.0f) continue;
+
         //check if there is a high score
         for(int j=0; j<best_n; j++){
             if(scores[j] < score){
-                for(int h=i; h<best_n-1; h++){
-                    scores[h+1] = scores[h];
-                    list[h+1] = list[h];
+                for(int h= best_n-1; h > j; h--){
+                    scores[h] = scores[h-1];
+                    list[h] = list[h-1];
                 }
                 scores[j] = score;
                 list[j] = pathFiles[i];
