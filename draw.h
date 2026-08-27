@@ -7,7 +7,7 @@
 #include "dirs.h"
 
 #define PIXEL_OFFSET_LEFT 4
-#define PIXEL_LINESPACE   3
+#define PIXEL_LINESPACE   2
 
 #define LINES_IN_PAGE 10
 

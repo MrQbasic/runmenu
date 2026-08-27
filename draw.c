@@ -15,7 +15,7 @@ unsigned long rgb_to_pixel(unsigned char r, unsigned char g, unsigned char b) {
 }
 
 int lineToPixelY(int line){
-    return (font->ascent + font->descent + PIXEL_LINESPACE) * line;
+    return (font->ascent + font->descent + PIXEL_LINESPACE*2) * line;
 }
 
 int subEntityMaxLenghtPixel(DirEntry* root, XFontStruct* font){
@@ -69,7 +69,7 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos){
     }
     
     int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT * 2;
-    XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE, cursorWidth, lineToPixelY(1)+PIXEL_LINESPACE);
+    XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE*2, cursorWidth, lineToPixelY(1));
     
 
     //go through all the entries 
@@ -308,7 +308,7 @@ int drawSuggestions(char** names, int count, int cursor){
         //draw cursor if needed
         if(i == cursor){
             XSetForeground(display, gc, rgb_to_pixel(40, 60, 70));
-            XFillRectangle(display, window, gc, current_X-PIXEL_OFFSET_LEFT, lineToPixelY(0)+PIXEL_LINESPACE, string_width+PIXEL_OFFSET_LEFT*2, lineToPixelY(1)+PIXEL_LINESPACE);
+            XFillRectangle(display, window, gc, current_X-PIXEL_OFFSET_LEFT, lineToPixelY(0)+PIXEL_LINESPACE*2, string_width+PIXEL_OFFSET_LEFT*2, lineToPixelY(1));
             XSetForeground(display, gc, rgb_to_pixel(255, 255, 255));
         }
         //draw the string
