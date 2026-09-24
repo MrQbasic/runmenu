@@ -30,7 +30,7 @@ int subEntityMaxLenghtPixel(DirEntry* root, XFontStruct* font){
     return max;
 }
 
-int drawDirList(DirEntry* dir, int* cursor, int x_pos){
+int drawDirList(DirEntry* dir, int* cursor, int x_pos, bool preview){
     if(dir->entries <= 0) return 0;
 
     //save old color config
@@ -39,38 +39,42 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos){
 
     int totalCount = 0;     //global count of the current dir
     int displayCount = 0;   //local count. max is LINES_IN_PAGES and min 0  
-    int skipp;              //this is used to skipp the first n entried in the list to enable a paged view
+    int skipp = 0;          //this is used to skipp the first n entried in the list to enable a paged view
 
     int numberOfPages = 0;
 
     //render the cursor
     int linePos;
     
-    //check if we are not the final selected entity
-    if(dir->hasSelected ){
-        linePos = (dir->selectedChild % LINES_IN_PAGE) + 1;
-        skipp = (dir->selectedChild /LINES_IN_PAGE) * LINES_IN_PAGE;
-    }else{
-        //clamp cursor
-        if(*cursor >= (dir->entries -1)) *cursor = (dir->entries -1);
+    
+    if(!preview){
+        //check if we are not the final selected entity
+        if(dir->hasSelected){
+            //if there is a child selected
+            linePos = (dir->selectedChild % LINES_IN_PAGE) + 1;
+            skipp = (dir->selectedChild /LINES_IN_PAGE) * LINES_IN_PAGE;
+        }else{
+            //if there is no child selected
+            //clamp cursor
+            if(*cursor >= (dir->entries -1)) *cursor = (dir->entries -1);
+            //calc number of pages
+            numberOfPages = (dir->entries) / LINES_IN_PAGE;
+            linePos = (*cursor % LINES_IN_PAGE) + 1;
+            skipp = (*cursor/LINES_IN_PAGE) * LINES_IN_PAGE;
+        }
 
-        //calc number of pages
-        numberOfPages = (dir->entries) / LINES_IN_PAGE;
+        //this is used to get the correct color instantly as we 
+        if(dir->hasSelected ){
+            XSetForeground(display, gc, rgb_to_pixel(90, 110, 190));
+        }else{
+            XSetForeground(display, gc, rgb_to_pixel(70, 80, 140));
+        }
 
-        linePos = (*cursor % LINES_IN_PAGE) + 1;
-        skipp = (*cursor/LINES_IN_PAGE) * LINES_IN_PAGE;
+        //draw the cursor
+        int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT * 2;
+        XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE*2, cursorWidth, lineToPixelY(1));
     }
 
-    //this is used to get the correct color instantly as we 
-    if(dir->hasSelected ){
-        XSetForeground(display, gc, rgb_to_pixel(90, 110, 190));
-    }else{
-        XSetForeground(display, gc, rgb_to_pixel(70, 80, 140));
-    }
-    
-    int cursorWidth = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT * 2;
-    XFillRectangle(display, window, gc, x_pos, lineToPixelY(linePos)+PIXEL_LINESPACE*2, cursorWidth, lineToPixelY(1));
-    
 
     //go through all the entries 
     for(int i=0; i<dir->entries; i++){
@@ -94,7 +98,13 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos){
             //recursivly call the drawDir
             if(entry->isSelected && entry->isDirectoy){
                 int offset_x = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
-                numberOfPages = drawDirList(entry, cursor, x_pos+offset_x);
+                numberOfPages = drawDirList(entry, cursor, x_pos+offset_x, false);
+            }
+
+            //render the preview
+            if( (!preview) && ((*cursor+1) == displayCount) && (!dir->hasSelected) && (entry->isDirectoy)){
+                int offset_x = subEntityMaxLenghtPixel(dir, font) + PIXEL_OFFSET_LEFT;
+                drawDirList(entry, cursor, x_pos+offset_x, true);
             }
         }
         totalCount++;

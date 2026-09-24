@@ -58,7 +58,7 @@ int main(void) {
     rootDir.nextEntry = NULL;
     rootDir.isDirectoy = true;
     rootDir.hasSelected = false;
-    rootDir.isSelected = false;
+    rootDir.isSelected = true;
     rootDir.parent = NULL;
     rootDir.entries = 0;
     getDirList(dir, &rootDir);
@@ -173,7 +173,7 @@ int main(void) {
                 DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
                 if(tmpEntry != NULL) currentEntry = tmpEntry;
 
-                int pageCnt = drawDirList(&rootDir, &line_cursor, 0);
+                int pageCnt = drawDirList(&rootDir, &line_cursor, 0, false);
 
                 if(userinput_cursor != 0){
                     char** list = getSuggestions(40, userinput);

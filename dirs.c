@@ -159,9 +159,9 @@ DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
         }
         //check if we go back
         if(*back){
-            dir->isSelected = false;
             *back = false;
             if(dir->parent != NULL){
+                dir->isSelected = false;
                 dir->parent->hasSelected = false;
                 *cursor = dir->parent->selectedChild;
                 return dir->parent;

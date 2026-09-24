@@ -38,7 +38,7 @@ void drawUserinput(char* input);
 
 void drawUserinputPlaceholder();
 
-int drawDirList(DirEntry* dir, int* cursor, int x_pos);
+int drawDirList(DirEntry* dir, int* cursor, int x_pos, bool preview);
 
 XRRMonitorInfo pick_monitor_under_point(XRRMonitorInfo *monitors, int num, int x, int y);
 
