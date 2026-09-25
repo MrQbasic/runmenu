@@ -92,6 +92,14 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos, bool preview){
             
             //render the name
             int len = strlen(entry->name);
+
+            //remove file Extensions but not .Files
+            char* dotPos = strchr(entry->name, '.');
+            if( (dotPos != NULL) && (dotPos != entry->name)){
+                len = (int) (dotPos - entry->name);
+            } 
+
+            //draw the filename
             XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2) , entry->name, len);
             displayCount++;
             
