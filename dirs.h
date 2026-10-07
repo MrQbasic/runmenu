@@ -22,6 +22,8 @@ DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back);
 
 void createDir(DirEntry* parent, char* dirName, int inputLength);
 
+void createLink(DirEntry* dir, char* pathToOrigin);
+
 void getFilesInPath();
 
 char** getSuggestions(int best_n, char* input);

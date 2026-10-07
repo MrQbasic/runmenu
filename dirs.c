@@ -220,21 +220,27 @@ void createDir(DirEntry* parent, char* dirName, int inputLength){
 }
 
 int pathFilesSize = 0;
+//store the name and the path including the name is done to save compute time during search
 char** pathFiles = NULL;
+char** pathFilesPath = NULL;
 int fileCount = 0;
 
 void expandList(){
     //create a new list with bigger size
     pathFilesSize += 100;
-    char** newList = (char**) malloc(sizeof(char*) * pathFilesSize);
+    char** newList1 = (char**) malloc(sizeof(char*) * pathFilesSize);
+    char** newList2 = (char**) malloc(sizeof(char*) * pathFilesSize);
     //check if there was a list before
     if(pathFiles != NULL){
         //copy old one over
-        memcpy(newList, pathFiles, sizeof(char*) * (pathFilesSize-100));
+        memcpy(newList1, pathFiles, sizeof(char*) * (pathFilesSize-100));
+        memcpy(newList2, pathFilesPath, sizeof(char*) * (pathFilesSize-100));
         free(pathFiles);
+        free(pathFilesPath);
     }
     //swap prts
-    pathFiles = newList;
+    pathFiles     = newList1;
+    pathFilesPath = newList2;
 }
 
 void getFilesInPath(){
@@ -273,10 +279,15 @@ void getFilesInPath(){
             if(entry->d_name[0] == '.') continue;
             //check if we need to resize the list
             if(fileIndex >= pathFilesSize) expandList();
+            //copy the path
+            int pathLen = snprintf(NULL, 0, "%s/%s", substring, entry->d_name);
+            char* path = malloc(pathLen + 1);
+            snprintf(path, pathLen+1, "%s/%s", substring, entry->d_name);
             //copy the name
             char* name = strdup(entry->d_name);
             //add the name to the list
             pathFiles[fileIndex] = name;
+            pathFilesPath[fileIndex] = path;
             fileIndex++;
         }
         //go to the next substring
@@ -338,4 +349,49 @@ char** getSuggestions(int best_n, char* input){
         }
     }
     return list;
+}
+
+void createLink(DirEntry* dir, char* pathToOrigin){
+    printf("create Link:%s,%s\n", dir->path, pathToOrigin);
+    //go though all files to get the path of the file we are trying to create a link for
+    for(int i=0; i<fileCount; i++){
+        if(pathToOrigin == pathFiles[i]){ //as the ptr is just passed along we dont need to do string compares
+            printf("This file:%s\n", pathFilesPath[i]);
+            //put the path for the symlink file together
+            char pathSymlink[300]; //lazy
+            snprintf(pathSymlink, 300, "%s/%s", dir->path, pathToOrigin);
+            //create the symlink in the fs
+            int err = symlink(pathFilesPath[i], pathSymlink);
+            //check for error
+            if(err != 0){
+                setMessage(MSG_ERROR, "Could not Create the link!");
+                printf("ERROR: could not create a symlink\n");
+                return;
+            }
+            //create an Entry for the symlink
+            DirEntry* entry =(DirEntry*) malloc(sizeof(DirEntry));
+            entry->isDirectoy = false; 
+            entry->isSelected = false;
+            entry->name = strdup(pathFiles[i]);
+            entry->hasSelected = false;
+            entry->parent = dir;
+            entry->path = strdup(pathSymlink);
+            entry->nextEntry = NULL;
+            //install the new entry into the tree
+            //copy the old list from the parent dir
+            DirEntry** newList =(DirEntry**) malloc(sizeof(DirEntry*) * (dir->entries + 1) );
+            memcpy(newList, dir->nextEntry, sizeof(DirEntry*) * dir->entries);
+            //get rid of the old list
+            free(dir->nextEntry);
+            //swap the buffers
+            dir->nextEntry = newList;
+            dir->nextEntry[dir->entries] = entry;
+            dir->entries++;
+
+            return;
+        }
+    }
+    
+    setMessage(MSG_ERROR, "Could not Create the link!");
+    return;
 }

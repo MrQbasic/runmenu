@@ -87,6 +87,7 @@ int main(void) {
         bool select = false;
         bool back = false;
         bool shouldRun = false;
+        bool shouldAddLink = false;
 
         switch (event.type) {
             case KeyPress:
@@ -101,6 +102,11 @@ int main(void) {
                         case XK_N:
                         case XK_n:
                             createDir(currentEntry, userinput, userinput_cursor);
+                            break;
+                        
+                        case XK_L:
+                        case XK_l:
+                            shouldAddLink = true;
                             break;
 
                         default:
@@ -162,19 +168,15 @@ int main(void) {
                 //handle window rendering
                 drawBegin();
 
+                //draw the userinput bar
                 if(userinput_cursor != 0){
                     drawUserinput(userinput);
                 }else{
                     horz_cursor = 0;
                     drawUserinputPlaceholder();
                 }
-                
-                //print the dir list
-                DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
-                if(tmpEntry != NULL) currentEntry = tmpEntry;
 
-                int pageCnt = drawDirList(&rootDir, &line_cursor, 0, false);
-
+                //handle everything regarding the recommendations
                 if(userinput_cursor != 0){
                     char** list = getSuggestions(40, userinput);
                     //count the suggestions
@@ -186,11 +188,23 @@ int main(void) {
                     if(horz_cursor >= cnt) horz_cursor = 0;
                     //draw them
                     drawSuggestions(list, cnt, horz_cursor);
+                    //file path
+                    char* path = list[horz_cursor];
                     //launch if needed
                     if(shouldRun){
-                        launchFromPath(list[horz_cursor]);
+                        launchFromPath(path);
                     }
+                    //add a new link if needed
+                    if(shouldAddLink){
+                        createLink(currentEntry, path);
+                    }
+
                 }
+
+                //print the dir list
+                DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
+                if(tmpEntry != NULL) currentEntry = tmpEntry;
+                int pageCnt = drawDirList(&rootDir, &line_cursor, 0, false);
 
                 drawBotomBar(line_cursor/LINES_IN_PAGE, pageCnt);
 
