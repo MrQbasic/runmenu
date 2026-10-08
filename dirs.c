@@ -170,6 +170,7 @@ DirEntry* handleDirList(DirEntry* dir, DirEntry** hoverdEntry, int* cursor, bool
         }
     }
     //only runs when the head folder has no entries
+    if(*back == false && *select == false) return NULL; //only if we realy did an operation
     *back = false;
     *select = false;
     if(dir->parent != NULL){
@@ -412,7 +413,7 @@ void removeFile(DirEntry* entry){
             int length = snprintf(NULL, 0, "%s/%s", entry->parent->path, entry->name);
             char* path = (char*) malloc(length + 1);
             snprintf(path, length+1, "%s/%s", entry->parent->path, entry->name);
-            printf("Removing File: %s", path);
+            printf("Removing File: %s\n", path);
             remove(path);
             //remove the entry 
             free(entry);
