@@ -78,6 +78,8 @@ int main(void) {
 
     DirEntry* currentEntry = &rootDir;
 
+    DirEntry* hoverdEntry = NULL;
+
     while (1) {
         //check if window is no longer selected
         if(!isWindowFocused()) exit(0);
@@ -107,6 +109,15 @@ int main(void) {
                         case XK_L:
                         case XK_l:
                             shouldAddLink = true;
+                            break;
+                        
+                        case XK_R:
+                        case XK_r:
+                            if(hoverdEntry != &rootDir && hoverdEntry != NULL){
+                                DirEntry* parent = hoverdEntry->parent;
+                                removeFile(hoverdEntry);
+                                hoverdEntry = parent;
+                            }
                             break;
 
                         default:
@@ -202,7 +213,7 @@ int main(void) {
                 }
 
                 //print the dir list
-                DirEntry* tmpEntry = handleDirList(&rootDir, &line_cursor, &select, &back);
+                DirEntry* tmpEntry = handleDirList(&rootDir, &hoverdEntry, &line_cursor, &select, &back);
                 if(tmpEntry != NULL) currentEntry = tmpEntry;
                 int pageCnt = drawDirList(&rootDir, &line_cursor, 0, false);
 

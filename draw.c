@@ -298,7 +298,7 @@ void drawUserinputPlaceholder(){
 void drawBotomBar(int pagePos, int pageCount){
     //Print page index
     char pageStringBuf[256];
-    int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir     Strg + L -> create Link", pagePos+1, pageCount+1);
+    int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir     Strg + L -> create Link     Strg + R -> remove", pagePos+1, pageCount+1);
     XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE), pageStringBuf, pageStringLen);
 }
 

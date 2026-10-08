@@ -121,9 +121,7 @@ void getDirList(DIR* dir, DirEntry* root){
 }
 
 //returns the current open entry (NULL if nothing changed)
-DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
-    //speed up
-    if(*select == false && *back == false) return NULL;
+DirEntry* handleDirList(DirEntry* dir, DirEntry** hoverdEntry, int* cursor, bool* select, bool* back){
     //unecpected case due to nature of event handeling
     if(*select && *back){
         *select = false;
@@ -136,12 +134,14 @@ DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
         DirEntry* entry = dir->nextEntry[i];
         //check if its a selected dir
         if(entry->isSelected){
-            return handleDirList(entry, cursor, select, back);
+            return handleDirList(entry, hoverdEntry, cursor, select, back);
         }
-        //check if we are at the end of the branch
-        if(dir->hasSelected) continue;
         //check if we are on the selected entry
         if(i != *cursor) continue;
+        //set the current entry as the one hovered
+        *hoverdEntry = entry;
+        //check if we are at the end of the branch
+        if(dir->hasSelected) continue;
         //check if we have to select
         if(*select){
             if(entry->isDirectoy){
@@ -172,7 +172,9 @@ DirEntry* handleDirList(DirEntry* dir, int* cursor, bool* select, bool* back){
     //only runs when the head folder has no entries
     *back = false;
     *select = false;
-    dir->parent->hasSelected = false;
+    if(dir->parent != NULL){
+        dir->parent->hasSelected = false;
+    }
     dir->isSelected = false; 
     return dir->parent;
 }
@@ -394,4 +396,31 @@ void createLink(DirEntry* dir, char* pathToOrigin){
     
     setMessage(MSG_ERROR, "Could not Create the link!");
     return;
+}
+
+void removeFile(DirEntry* entry){
+    DirEntry* parent = entry->parent;
+    //find the entry in the parents list
+    for(int i=0; i<parent->entries; i++){
+        if(parent->nextEntry[i] == entry){
+            //remove the entry
+            for(int j=i+1; j<parent->entries; j++){
+                parent->nextEntry[j-1] = parent->nextEntry[j];
+            }
+            parent->entries--;
+            //remove from file system
+            int length = snprintf(NULL, 0, "%s/%s", entry->parent->path, entry->name);
+            char* path = (char*) malloc(length + 1);
+            snprintf(path, length+1, "%s/%s", entry->parent->path, entry->name);
+            printf("Removing File: %s", path);
+            remove(path);
+            //remove the entry 
+            free(entry);
+            free(path);
+            //tell the user
+            setMessage(MSG_INFO, "Removed file");
+            return;
+        }
+    }
+    setMessage(MSG_ERROR, "Could not remove the file");
 }
