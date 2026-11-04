@@ -90,6 +90,8 @@ int main(void) {
         bool back = false;
         bool shouldRun = false;
         bool shouldAddLink = false;
+        bool shouldDrawRenamePopup = false;
+        char* renameOld = NULL;
 
         switch (event.type) {
             case KeyPress:
@@ -111,14 +113,35 @@ int main(void) {
                             shouldAddLink = true;
                             break;
                         
-                        case XK_R:
-                        case XK_r:
+                        case XK_D:
+                        case XK_d:
                             if(hoverdEntry != &rootDir && hoverdEntry != NULL){
                                 DirEntry* parent = hoverdEntry->parent;
                                 removeFile(hoverdEntry);
                                 hoverdEntry = parent;
                             }
                             break;
+                        
+                        case XK_R:
+                        case XK_r:
+                             if(hoverdEntry != &rootDir && hoverdEntry != NULL){
+                                //check is new filename is valid
+                                if(userinput_cursor == 0){
+                                    setMessage(MSG_WARN, "New file name can't be blank!");
+                                    break;
+                                }
+                                //keep track of the old name
+                                if(renameOld != NULL) free(renameOld);
+                                renameOld = strdup(hoverdEntry->name);
+                                //try to rename the entry
+                                if(renameEntry(hoverdEntry, userinput)){
+                                    shouldDrawRenamePopup = true;
+                                }else{
+                                    setMessage(MSG_ERROR, "Could not rename!");
+                                }  
+                            }
+                            break;
+
 
                         default:
                             //unexpected input
@@ -220,6 +243,11 @@ int main(void) {
                 drawBotomBar(line_cursor/LINES_IN_PAGE, pageCnt);
 
                 drawMessage();
+
+                if(shouldDrawRenamePopup){
+                    drawRenamePopup(userinput, renameOld);
+                    shouldDrawRenamePopup = false;
+                }
 
                 XFlush(display);
                 break;

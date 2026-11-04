@@ -298,7 +298,7 @@ void drawUserinputPlaceholder(){
 void drawBotomBar(int pagePos, int pageCount){
     //Print page index
     char pageStringBuf[256];
-    int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir     Strg + L -> create Link     Strg + R -> remove", pagePos+1, pageCount+1);
+    int pageStringLen = snprintf(pageStringBuf, sizeof(pageStringBuf), "%d / %d     Strg + N -> new dir     Strg + L -> create Link     Strg + D -> delete     Strg + R -> rename", pagePos+1, pageCount+1);
     XDrawString(display, window, gc, PIXEL_OFFSET_LEFT, lineToPixelY(2+LINES_IN_PAGE), pageStringBuf, pageStringLen);
 }
 
@@ -335,4 +335,71 @@ int drawSuggestions(char** names, int count, int cursor){
         current_X += string_width + PIXEL_OFFSET_LEFT;
     }
     return count;
+}
+
+void drawRenamePopup(char* new_name, char* old_name){
+    shouldDrawMsg = false;
+    //save old color config
+    XGCValues old_values;
+    XGetGCValues(display, gc, GCForeground, &old_values);
+    //create the stings
+    int length = snprintf(NULL, 0, RENAME_POPUP_FORMAT, new_name, old_name) + 1;
+    char* buf = (char*) malloc(sizeof(char) * length);
+    snprintf(buf, length, RENAME_POPUP_FORMAT, new_name, old_name);
+    //calc dimensions
+    ///count lines
+    int lines = 1;
+    for(int i=0; i<length-1; i++){
+        if(buf[i] == '\n') lines++;
+    }
+    ///find each line and length and track each length
+    int currentSubstring = 0;
+    int maxLength_pixel = 0;
+    int*   lengths_char  = (int*)   malloc(sizeof(int) * lines);
+    char** substrings    = (char**) malloc(sizeof(char*) * lines);
+    //init first entry
+    substrings[0] = buf;
+    lengths_char[0] = 0;
+    //go through the string again
+    for(int i=0; i<length; i++){
+        if(buf[i] == '\n' || buf[i] == '\0'){
+            //calc pix width
+            int widthPixels = XTextWidth(font, substrings[currentSubstring], lengths_char[currentSubstring]);
+            if(widthPixels > maxLength_pixel){
+                maxLength_pixel = widthPixels;
+            }
+            //if its the last char then don't init a new entry
+            if(buf[i] == '\0') break;
+            //init next entry
+            currentSubstring++;
+            substrings[currentSubstring] = buf + i + 1;
+            lengths_char[currentSubstring] = 0;
+        }else{
+            lengths_char[currentSubstring]++;
+        }
+    }
+
+    //calc box dimensions
+    int box_pos_X = (monitor_width / 2) - (maxLength_pixel / 2) - MSG_TEXT_PADDING_X;
+    int box_pos_Y = (lineToPixelY(LINES_IN_PAGE+2) / 2 ) - MSG_TEXT_PADDING_Y - lineToPixelY(lines/2) + PIXEL_LINESPACE;
+    unsigned int box_width = maxLength_pixel + MSG_TEXT_PADDING_X*2;
+    unsigned int box_height = lineToPixelY(lines) + MSG_TEXT_PADDING_Y*2;
+    //draw background clear
+    XSetForeground(display, gc, rgb_to_pixel(0, 0, 0));
+    XFillRectangle(display, window, gc, box_pos_X, box_pos_Y, box_width, box_height);
+    //draw the frame
+    XSetForeground(display, gc,  rgb_to_pixel(255, 255, 255));
+    XDrawRectangle(display, window, gc, box_pos_X, box_pos_Y, box_width, box_height);
+    //draw Text lines (alligned on right side)
+    for(int i=0; i<lines; i++){
+        int textStart_x = box_pos_X + MSG_TEXT_PADDING_X;
+        int textStart_y = box_pos_Y + lineToPixelY(i+1);
+        XDrawString(display, window, gc, textStart_x, textStart_y, substrings[i], lengths_char[i]);
+    }
+
+    //reset colors and buffer
+    free(buf);
+    free(lengths_char);
+    free(substrings);
+    XSetForeground(display, gc, old_values.foreground);
 }

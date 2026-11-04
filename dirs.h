@@ -29,3 +29,5 @@ void getFilesInPath();
 char** getSuggestions(int best_n, char* input);
 
 void removeFile(DirEntry* entry);
+
+bool renameEntry(DirEntry* entry, char* newName);

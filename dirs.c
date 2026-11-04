@@ -425,3 +425,33 @@ void removeFile(DirEntry* entry){
     }
     setMessage(MSG_ERROR, "Could not remove the file");
 }
+
+bool renameEntry(DirEntry* entry, char* newName){
+    //create the new file path
+    int newLength = strlen(entry->parent->path) + strlen(newName) + 3;
+    char* newPath = (char*) malloc(sizeof(char) * newLength);
+    snprintf(newPath, newLength, "%s/%s", entry->parent->path, newName);
+    newPath[newLength] = '\0';
+    //create the old file path as entity->path is not the file in the case of link files
+    int oldLength = strlen(entry->parent->path) + strlen(entry->name) + 3;
+    char* oldPath = (char*) malloc(sizeof(char) * oldLength);
+    snprintf(oldPath, oldLength, "%s/%s", entry->parent->path, entry->name);
+    oldPath[oldLength] = '\0';
+    //attempt to rename the file
+    if(rename(oldPath, newPath) == 0){
+        //rename worked
+        free(oldPath);
+        free(entry->name);
+        entry->name = strdup(newName); //input is a pointer to the userinput so it will change
+        if(entry->isDirectoy){
+            free(entry->path);
+            entry->path = newPath;
+        }
+        return true;
+    }else{
+        //could not rename
+        free(newPath);
+        free(oldPath);
+        return false;
+    }
+}
