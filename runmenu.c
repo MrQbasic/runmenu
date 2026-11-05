@@ -90,8 +90,8 @@ int main(void) {
         bool back = false;
         bool shouldRun = false;
         bool shouldAddLink = false;
-        bool shouldDrawRenamePopup = false;
         char* renameOld = NULL;
+        char* renameMsg = NULL;
 
         switch (event.type) {
             case KeyPress:
@@ -135,7 +135,12 @@ int main(void) {
                                 renameOld = strdup(hoverdEntry->name);
                                 //try to rename the entry
                                 if(renameEntry(hoverdEntry, userinput)){
-                                    shouldDrawRenamePopup = true;
+                                    //construct the message
+                                    free(renameMsg);
+                                    int msgLength = snprintf(NULL, 0, "Renamed file or directory!\n   New name: %s\n   Old name: %s", userinput, renameOld) + 1;
+                                    char* renameMsg = (char*) malloc(sizeof(char) * msgLength);
+                                    snprintf(renameMsg, msgLength, "Renamed file or directory!\n   New name: %s\n   Old name: %s", userinput, renameOld);
+                                    setMessage(MSG_INFO, renameMsg);
                                 }else{
                                     setMessage(MSG_ERROR, "Could not rename!");
                                 }  
@@ -243,11 +248,6 @@ int main(void) {
                 drawBotomBar(line_cursor/LINES_IN_PAGE, pageCnt);
 
                 drawMessage();
-
-                if(shouldDrawRenamePopup){
-                    drawRenamePopup(userinput, renameOld);
-                    shouldDrawRenamePopup = false;
-                }
 
                 XFlush(display);
                 break;

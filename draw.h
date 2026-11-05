@@ -6,8 +6,6 @@
 
 #include "dirs.h"
 
-#define RENAME_POPUP_FORMAT "Renamed file or directory!\n   New name: %s\n   Old name: %s"
-
 #define PIXEL_OFFSET_LEFT 4
 #define PIXEL_LINESPACE   2
 
@@ -47,5 +45,3 @@ XRRMonitorInfo pick_monitor_under_point(XRRMonitorInfo *monitors, int num, int x
 bool isWindowFocused();
 
 int drawSuggestions(char** names, int count, int cursor);
-
-void drawRenamePopup(char* new_name, char* old_name);
