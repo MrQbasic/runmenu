@@ -55,7 +55,7 @@ int main(void) {
     DirEntry rootDir;
     rootDir.path = (char*) malloc(sizeof(char) * path_len);
     strcpy(rootDir.path, path);
-    rootDir.nextEntry = NULL;
+    rootDir.entryList = NULL;
     rootDir.isDirectoy = true;
     rootDir.hasSelected = false;
     rootDir.isSelected = true;

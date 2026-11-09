@@ -22,7 +22,7 @@ int subEntityMaxLenghtPixel(DirEntry* root, XFontStruct* font){
     int max = 0;
     //go through dir names
     for(int i=0; i<root->entries; i++){
-        DirEntry *entry = root->nextEntry[i];
+        DirEntry *entry = root->entryList[i];
         int len = strlen(entry->name);
         int pixcnt = XTextWidth(font, entry->name, len);
         if(pixcnt > max) max = pixcnt;
@@ -81,7 +81,7 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos, bool preview){
         if(totalCount >= skipp){
             //get the entry
             if(displayCount >= LINES_IN_PAGE) break;
-            DirEntry *entry = dir->nextEntry[i];
+            DirEntry *entry = dir->entryList[i];
 
             //check the entry type
             if(entry->isDirectoy){
@@ -97,10 +97,21 @@ int drawDirList(DirEntry* dir, int* cursor, int x_pos, bool preview){
             char* dotPos = strchr(entry->name, '.');
             if( (dotPos != NULL) && (dotPos != entry->name)){
                 len = (int) (dotPos - entry->name);
-            } 
+            }
+            
+            //remove ID prefix
+            char* name = entry->name; 
+            if(entry->name[0] == '%'){
+                do{
+                name++;
+                len--;
+                }while((name[0] != '\0') && (name[0] != '%'));
+                name++;
+                len--;
+            }
 
             //draw the filename
-            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2) , entry->name, len);
+            XDrawString(display, window, gc , PIXEL_OFFSET_LEFT + x_pos, lineToPixelY(displayCount+2) , name, len);
             displayCount++;
             
             //recursivly call the drawDir

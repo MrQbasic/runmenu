@@ -21,6 +21,76 @@ int getSubTypeCount(DIR* dir, unsigned char type){
     return count;
 }
 
+//returns -1 if there is no ID (format is "%1234%restOftheFilename.txt")
+int getIDfromFilename(char* filename){
+    //safty check
+    if(filename == NULL) return -1;
+    //check if we hae an ID
+    if(filename[0] != '%') return -1;
+    //put the number together
+    int ID = 0;
+    //go through all chars which are part of the number
+    char* c = filename + 1;  // leave the first id marker out
+    while( (*c != '\0') && (*c != '%') ){
+        //conver char to int
+        int digit = *c - '0';
+        //append the digit if it is acutally a digit
+        if( (digit >= 0) && (digit <= 9)){
+            ID = ( ID * 10 ) + digit;
+        }
+        //goto next char
+        c++;
+    }
+    return ID;
+}
+
+
+void sortDir(DirEntry* dir){
+    //sort the current list (keep in mind function is recursive so we just need to sort the current root dir)
+    DirEntry** newEntryList = (DirEntry**) malloc(sizeof(DirEntry*) * (dir->entries));
+    //first check all the files with a explicit IDs
+    int lastID = -1;
+    int listIndex = 0;
+    while(1){
+        //search for smallest larger ID
+        int currentSmallestNextIndex = -1;
+        int currentSmallestNextID = __INT_MAX__;
+        for(int i=0; i<dir->entries; i++){
+            if(dir->entryList[i] == NULL) continue;
+            //get the explice ID from the filename
+            int ID = getIDfromFilename(dir->entryList[i]->name);
+            //check if its a new best
+            if((ID > lastID) && (ID < currentSmallestNextID)){
+                currentSmallestNextID = ID;
+                currentSmallestNextIndex = i;
+            }
+        }
+        //did we fine a new entry ?
+        if(currentSmallestNextIndex != -1){
+            lastID = currentSmallestNextID;
+            printf("ID: %d\n", currentSmallestNextID);
+            //add to the list
+            newEntryList[listIndex] = dir->entryList[currentSmallestNextIndex];
+            dir->entryList[currentSmallestNextIndex] = NULL;
+            listIndex++;
+        }else{
+            //if not then there is nothing to do so we quit
+            break;
+        }
+    }
+    //chuck in the rest TODO sort by alphabet
+    for(int i=0; i<dir->entries; i++){
+        if(dir->entryList[i] == NULL) continue;
+
+        newEntryList[listIndex] = dir->entryList[i];
+        listIndex++;
+    }
+
+    //switch the lists
+    free(dir->entryList);
+    dir->entryList = newEntryList;
+}
+
 
 //return is count of dirs
 void getDirList(DIR* dir, DirEntry* root){
@@ -32,7 +102,7 @@ void getDirList(DIR* dir, DirEntry* root){
 
     printf("%s: files: %d\n", root->path, root->entries);
 
-    root->nextEntry = (DirEntry**) malloc(sizeof(DirEntry*) * (root->entries));
+    root->entryList = (DirEntry**) malloc(sizeof(DirEntry*) * (root->entries));
 
     //scan the dir
     struct dirent *entry;
@@ -41,7 +111,6 @@ void getDirList(DIR* dir, DirEntry* root){
     while ((entry = readdir(dir)) != NULL) {
         //filter out all hidden folders
         if(entry->d_name[0] == '.') continue;
-
         switch (entry->d_type){
             case DT_DIR:
                 //check if the array is full
@@ -57,11 +126,12 @@ void getDirList(DIR* dir, DirEntry* root){
                 e1->name = (char*) malloc(strlen(entry->d_name) + 1);
                 strcpy(e1->name, entry->d_name);
                 //substructs
-                e1->nextEntry = NULL;
+                e1->entryList = NULL;
                 e1->parent = root;
                 e1->isSelected = false;
+                e1->isLink = false;
                 //append to the list
-                root->nextEntry[file_index] = e1;
+                root->entryList[file_index] = e1;
                 
                 //concat rootpath and name to get the new path
                 int newpath_len = strlen(root->path) + strlen(entry->d_name)+2;
@@ -73,7 +143,6 @@ void getDirList(DIR* dir, DirEntry* root){
                 if(dir != NULL){
                     getDirList(dir, e1);
                 }
-                
                 file_index ++;
                 break;
 
@@ -93,10 +162,10 @@ void getDirList(DIR* dir, DirEntry* root){
                 e2->name = (char*) malloc(strlen(entry->d_name) + 1);
                 strcpy(e2->name, entry->d_name);
                 //substructs
-                e2->nextEntry = NULL;
+                e2->entryList = NULL;
                 e2->parent = root;
                 e2->entries = 0;
-                //concat rootpath and name to get the new path
+                //concat rootpath and name to get the default path
                 newpath_len = strlen(root->path) + strlen(entry->d_name)+2;
                 e2->path = (char*) malloc(sizeof(char) * newpath_len); 
                 snprintf(e2->path, newpath_len, "%s/%s", root->path, entry->d_name);
@@ -104,12 +173,18 @@ void getDirList(DIR* dir, DirEntry* root){
                 char* newPath = (char*) malloc(sizeof(char) * 1024);
                 ssize_t linkPathLength = readlink(e2->path, newPath, sizeof(char) * 1023);
                 if(linkPathLength != -1){
+                    //file is a symlink
                     newPath[linkPathLength] = '\0';
                     free(e2->path);
                     e2->path = newPath;
+                    e2->isLink = true;
+                }else{
+                    //file is not a symlink
+                    free(newPath);
+                    e2->isLink = false;
                 }
                 //append to the list
-                root->nextEntry[file_index] = e2;
+                root->entryList[file_index] = e2;
                 file_index ++;
                 break;
 
@@ -118,6 +193,8 @@ void getDirList(DIR* dir, DirEntry* root){
                 break;
         }
     }
+    
+    sortDir(root);
 }
 
 //returns the current open entry (NULL if nothing changed)
@@ -131,7 +208,7 @@ DirEntry* handleDirList(DirEntry* dir, DirEntry** hoverdEntry, int* cursor, bool
     //go through all entried
     for(int i=0; i<dir->entries; i++){
         //get the entry
-        DirEntry* entry = dir->nextEntry[i];
+        DirEntry* entry = dir->entryList[i];
         //check if its a selected dir
         if(entry->isSelected){
             return handleDirList(entry, hoverdEntry, cursor, select, back);
@@ -194,7 +271,7 @@ void createDir(DirEntry* parent, char* dirName, int inputLength){
     entry->isDirectoy = true;
     entry->hasSelected = false;
     entry->isSelected = true;
-    entry->nextEntry = NULL;
+    entry->entryList = NULL;
     entry->selectedChild = 0;
     entry->entries = 0;
     int pathLength = strlen(dirName) + 2 + strlen(parent->path);
@@ -202,11 +279,11 @@ void createDir(DirEntry* parent, char* dirName, int inputLength){
     snprintf(entry->path, sizeof(char) * pathLength, "%s/%s", parent->path, dirName);
     //add to parent
     DirEntry** newList = (DirEntry**) malloc(sizeof(DirEntry*) * (parent->entries + 1));
-    memcpy(newList, parent->nextEntry, parent->entries * sizeof(DirEntry*));
-    free(parent->nextEntry);
-    parent->nextEntry = newList;
+    memcpy(newList, parent->entryList, parent->entries * sizeof(DirEntry*));
+    free(parent->entryList);
+    parent->entryList = newList;
     parent->entries++; 
-    parent->nextEntry[parent->entries-1] = entry;
+    parent->entryList[parent->entries-1] = entry;
     parent->hasSelected = true;
     parent->selectedChild = parent->entries - 1;
     //add to file system
@@ -379,16 +456,16 @@ void createLink(DirEntry* dir, char* pathToOrigin){
             entry->hasSelected = false;
             entry->parent = dir;
             entry->path = strdup(pathSymlink);
-            entry->nextEntry = NULL;
+            entry->entryList = NULL;
             //install the new entry into the tree
             //copy the old list from the parent dir
             DirEntry** newList =(DirEntry**) malloc(sizeof(DirEntry*) * (dir->entries + 1) );
-            memcpy(newList, dir->nextEntry, sizeof(DirEntry*) * dir->entries);
+            memcpy(newList, dir->entryList, sizeof(DirEntry*) * dir->entries);
             //get rid of the old list
-            free(dir->nextEntry);
+            free(dir->entryList);
             //swap the buffers
-            dir->nextEntry = newList;
-            dir->nextEntry[dir->entries] = entry;
+            dir->entryList = newList;
+            dir->entryList[dir->entries] = entry;
             dir->entries++;
 
             return;
@@ -403,10 +480,10 @@ void removeFile(DirEntry* entry){
     DirEntry* parent = entry->parent;
     //find the entry in the parents list
     for(int i=0; i<parent->entries; i++){
-        if(parent->nextEntry[i] == entry){
+        if(parent->entryList[i] == entry){
             //remove the entry
             for(int j=i+1; j<parent->entries; j++){
-                parent->nextEntry[j-1] = parent->nextEntry[j];
+                parent->entryList[j-1] = parent->entryList[j];
             }
             parent->entries--;
             //remove from file system
@@ -443,10 +520,13 @@ bool renameEntry(DirEntry* entry, char* newName){
         free(oldPath);
         free(entry->name);
         entry->name = strdup(newName); //input is a pointer to the userinput so it will change
-        if(entry->isDirectoy){
+        //we only rename the path when its not a link else you would try to rename the source of the link
+        if(!(entry->isLink)){
             free(entry->path);
             entry->path = newPath;
         }
+        //make sure the new file sits at the correct location
+        sortDir(entry->parent);
         return true;
     }else{
         //could not rename

@@ -7,10 +7,11 @@ typedef struct DirEntry{
     int selectedChild;
     bool isSelected;    //this one is selected
     bool isDirectoy;
+    bool isLink;        //symlink in file system
     char* name;
     char* path;
     int entries;
-    struct DirEntry** nextEntry;
+    struct DirEntry** entryList;
     struct DirEntry* parent;
 } DirEntry;
 
